@@ -50,7 +50,7 @@ if prompt := st.chat_input("请输入法律问题..."):
             st.markdown(result["answer"])
 
             badge = "🟡 中等置信度" if result["confidence"] == "medium" else "🔴 低置信度"
-            st.caption(f"当前回答状态：{badge}")
+            st.caption(f"问题类型：{result['question_type']} ｜ 当前回答状态：{badge}")
 
             with st.expander("查看法条依据"):
                 for idx, source in enumerate(result["sources"], start=1):
@@ -59,12 +59,13 @@ if prompt := st.chat_input("请输入法律问题..."):
                     st.write(source["content"])
 
     st.session_state.messages.append(
-        {
-            "role": "assistant",
-            "content": result["answer"],
-            "sources": result["sources"],
-        }
-    )
+    {
+        "role": "assistant",
+        "content": result["answer"],
+        "sources": result["sources"],
+        "question_type": result["question_type"],
+    }
+)
 if "messages" not in st.session_state:
     st.session_state.messages = []
 

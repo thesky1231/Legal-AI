@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  legal-ai-ingest:
+    build: .
+    container_name: legal-ai-ingest
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./db_docker:/app/db
+      - ./data:/app/data
+      - ${HF_CACHE_DIR}:/root/.cache/huggingface
+    command: ["python", "-m", "src.etl.ingest"]
+
+  legal-ai-backend:
+    build: .
+    container_name: legal-ai-backend
+    ports:
+      - "8000:8000"
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./db_docker:/app/db
+      - ./data:/app/data
+      - ${HF_CACHE_DIR}:/root/.cache/huggingface
+    command: ["python", "server.py"]

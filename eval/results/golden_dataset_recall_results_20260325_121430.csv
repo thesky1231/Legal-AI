@@ -1,0 +1,5 @@
+﻿strategy,recall@3,recall@5
+BM25,0.0000,0.0000
+Vector,0.9250,0.9250
+Hybrid,0.9250,0.9250
+Hybrid + Rerank,0.9250,0.9250

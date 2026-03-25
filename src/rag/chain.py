@@ -1,6 +1,7 @@
 import os
+import re
 from functools import lru_cache
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Literal
 
 import chromadb
 from sentence_transformers import CrossEncoder
@@ -29,10 +30,19 @@ from config import (
     VECTOR_RECALL_K,
     BM25_RECALL_K,
     FINAL_TOP_K,
+    OLLAMA_BASE_URL,
 )
 
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
+QuestionType = Literal[
+    "direct_answer",
+    "definition",
+    "confusing",
+    "complex_reasoning",
+    "should_refuse",
+]
 
 
 @lru_cache(maxsize=1)
@@ -100,8 +110,8 @@ def load_all_docs_from_collection() -> List[Document]:
 
     client = chromadb.PersistentClient(path=DB_PATH)
     collection = client.get_collection(COLLECTION_NAME)
-
     raw = collection.get(include=["documents", "metadatas"])
+
     documents = raw.get("documents", [])
     metadatas = raw.get("metadatas", [])
 
@@ -120,6 +130,9 @@ def get_vector_retriever():
 @lru_cache(maxsize=1)
 def get_bm25_retriever():
     docs = load_all_docs_from_collection()
+    if not docs:
+        raise ValueError("当前数据库中没有可用于 BM25 的文档，请先执行 ingest 构建知识库。")
+
     bm25_retriever = BM25Retriever.from_documents(docs)
     bm25_retriever.k = BM25_RECALL_K
     return bm25_retriever
@@ -136,6 +149,7 @@ def get_hybrid_candidates(query: str) -> List[Document]:
     for doc in vec_docs + bm25_docs:
         if doc.page_content not in unique_docs:
             unique_docs[doc.page_content] = doc
+
     return list(unique_docs.values())
 
 
@@ -177,16 +191,132 @@ def format_docs(docs: List[Document]) -> str:
     return "\n\n".join(parts)
 
 
-def build_answer_prompt() -> ChatPromptTemplate:
+# =========================
+# 1. 问题分类
+# =========================
+def classify_question(query: str) -> QuestionType:
+    q = query.strip()
+
+    # 1. should_refuse：不应直接下案件定性或量刑结论
+    refuse_patterns = [
+        r"能不能直接判断",
+        r"能不能直接认定",
+        r"一定会判几年",
+        r"一定构成",
+        r"一定就是",
+        r"能不能断定",
+        r"能不能直接下结论",
+        r"能不能仅凭",
+        r"只看.*能不能",
+        r"是不是一定",
+        r"一定会怎么判",
+        r"能不能只根据.*判断",
+    ]
+    if any(re.search(p, q) for p in refuse_patterns):
+        return "should_refuse"
+
+    # 2. confusing：易混淆、比较、区别
+    confusing_keywords = [
+        "区别",
+        "不同",
+        "区分",
+        "边界",
+        "混淆",
+        "相比",
+        "比较",
+    ]
+    confusing_pairs = [
+        ("抢劫", "抢夺"),
+        ("诈骗", "合同诈骗"),
+        ("故意伤害", "故意杀人"),
+        ("非法拘禁", "绑架"),
+        ("危险驾驶", "交通肇事"),
+        ("盗窃", "故意毁坏财物"),
+    ]
+    if any(k in q for k in confusing_keywords):
+        for a, b in confusing_pairs:
+            if a in q and b in q:
+                return "confusing"
+
+    # “A和B有什么区别”这类也算 confusing
+    for a, b in confusing_pairs:
+        if a in q and b in q:
+            return "confusing"
+
+    # 3. definition：概念定义、术语解释
+    definition_keywords = [
+        "是什么",
+        "怎么理解",
+        "叫什么",
+        "定义",
+        "属于什么",
+        "在法律上叫什么",
+        "一般指什么",
+        "如何理解",
+        "是什么意思",
+    ]
+    if any(k in q for k in definition_keywords):
+        return "definition"
+    if "从犯" in q and ("怎么处理" in q or "一般怎么处理" in q):
+        return "definition"
+    # 4. complex_reasoning：多条件、多角色、多情节
+    complex_keywords = [
+        "未成年人",
+        "主犯",
+        "从犯",
+        "共同犯罪",
+        "正当防卫",
+        "防卫过当",
+        "未遂",
+        "自首",
+        "量刑",
+        "怎么处理",
+        "如何处理",
+        "如何认定",
+        "如何评价",
+        "结合",
+    ]
+    if sum(1 for k in complex_keywords if k in q) >= 2:
+        return "complex_reasoning"
+
+    # 默认 direct_answer
+    return "direct_answer"
+
+# =========================
+# 2. 类型对应策略
+# =========================
+def get_top_k_for_question_type(qtype: QuestionType) -> int:
+    mapping = {
+        "direct_answer": 3,
+        "definition": 4,
+        "confusing": 7,
+        "complex_reasoning": 5,
+        "should_refuse": 3,
+    }
+    return mapping[qtype]
+
+
+def build_refusal_answer() -> str:
+    return (
+        "【结论】\n"
+        "根据当前检索到的法条，暂时无法直接作出确定性结论。\n\n"
+        "【依据】\n"
+        "此类问题通常需要结合具体案件事实、行为方式、主观故意、结果后果以及证据情况综合分析，"
+        "仅凭当前问题描述或少量法条，不能直接下最终定性或量刑结论。\n\n"
+        "【说明】\n"
+        "为避免误导，系统在证据不足或案件事实不完整时采取保守回答策略。建议补充更具体的案件事实。"
+    )
+
+
+def build_direct_prompt() -> ChatPromptTemplate:
     template = """
 你是一个法律检索问答助手。请严格依据提供的法条资料回答，不要使用资料之外的知识。
 
 回答要求：
 1. 先给出简明结论；
 2. 再给出对应法条依据；
-3. 如果证据不足，请明确回答“根据当前检索到的法条，暂时无法确定”；
-4. 不要编造法条，不要虚构案件事实；
-5. 输出尽量结构化，格式为：
+3. 不要编造法条，不要虚构案件事实；
+4. 输出尽量结构化，格式为：
 【结论】
 ...
 【依据】
@@ -202,22 +332,100 @@ def build_answer_prompt() -> ChatPromptTemplate:
 """
     return ChatPromptTemplate.from_template(template)
 
-from config import (
-    DB_PATH,
-    COLLECTION_NAME,
-    EMBEDDING_MODEL,
-    EMBEDDING_DEVICE,
-    NORMALIZE_EMBEDDINGS,
-    RERANK_MODEL,
-    RERANK_DEVICE,
-    LLM_MODEL,
-    LLM_TEMPERATURE,
-    LLM_NUM_CTX,
-    VECTOR_RECALL_K,
-    BM25_RECALL_K,
-    FINAL_TOP_K,
-    OLLAMA_BASE_URL,
-)
+
+def build_confusing_prompt() -> ChatPromptTemplate:
+    template = """
+你是一个法律检索问答助手。当前问题属于“易混淆法律概念/罪名区分”问题，请严格依据提供的法条资料回答。
+
+回答要求：
+1. 不要武断地下最终案件结论；
+2. 必须分别说明两个概念/罪名各自的核心特征；
+3. 必须分别列出对应的法条依据，不能只给一个；
+4. 必须明确指出二者最关键的区分点；
+5. 如资料不足以完整比较，明确说明“当前资料不足以完整区分”；
+6. 输出格式为：
+【比较对象】
+A：...
+B：...
+【核心区别】
+...
+【A 的依据法条】
+...
+【B 的依据法条】
+...
+【说明】
+...
+
+【参考资料】
+{context}
+
+【用户问题】
+{question}
+"""
+    return ChatPromptTemplate.from_template(template)
+
+
+def build_complex_prompt() -> ChatPromptTemplate:
+    template = """
+你是一个法律检索问答助手。当前问题属于“复杂推理/多条件分析”问题，请严格依据提供的法条资料回答。
+
+回答要求：
+1. 优先给出保守、稳健的分析；
+2. 明确说明还需要结合哪些案件事实；
+3. 不要作出绝对化结论；
+4. 必须列出法条依据；
+5. 输出格式为：
+【初步结论】
+...
+【需要结合的事实】
+...
+【依据法条】
+...
+【说明】
+...
+
+【参考资料】
+{context}
+
+【用户问题】
+{question}
+"""
+    return ChatPromptTemplate.from_template(template)
+
+def build_definition_prompt() -> ChatPromptTemplate:
+    template = """
+你是一个法律检索问答助手。当前问题属于“法律概念/术语定义”问题，请严格依据提供的法条资料回答。
+
+回答要求：
+1. 先直接解释这个概念是什么；
+2. 再给出对应法条依据；
+3. 不要过度保守，不要把普通定义题误判成无法回答；
+4. 不要编造法条，不要虚构案件事实；
+5. 输出格式为：
+【概念解释】
+...
+【依据法条】
+...
+【说明】
+...
+
+【参考资料】
+{context}
+
+【用户问题】
+{question}
+"""
+    return ChatPromptTemplate.from_template(template)
+
+def get_prompt_by_type(qtype: QuestionType) -> ChatPromptTemplate:
+    if qtype == "definition":
+        return build_definition_prompt()
+    if qtype == "confusing":
+        return build_confusing_prompt()
+    if qtype == "complex_reasoning":
+        return build_complex_prompt()
+    return build_direct_prompt()
+
 
 def get_model() -> ChatOllama:
     return ChatOllama(
@@ -227,25 +435,42 @@ def get_model() -> ChatOllama:
         num_ctx=LLM_NUM_CTX,
     )
 
-def is_low_confidence(query: str, docs: List[Document]) -> bool:
+
+# =========================
+# 3. 风险判断
+# =========================
+def is_low_confidence(query: str, docs: List[Document], qtype: QuestionType) -> bool:
     if not docs:
         return True
 
-    query_len = len(query.strip())
-    joined = "".join(doc.page_content for doc in docs[:2])
+    joined = "".join(doc.page_content for doc in docs[:2]).strip()
 
-    # 很粗但实用：如果召回内容过短，或者问题很长但证据很少，先走保守策略
-    if len(joined.strip()) < 60:
+    if len(joined) < 60:
         return True
 
-    if query_len >= 20 and len(joined.strip()) < 120:
+    # 定义题不要过度保守
+    if qtype == "definition":
+        return len(joined) < 80
+
+    # 复杂题要求更高证据量
+    if qtype == "complex_reasoning" and len(joined) < 120:
+        return True
+
+    # 混淆题要求候选稍充分
+    if qtype == "confusing" and len(joined) < 100:
         return True
 
     return False
 
 
-def answer_with_sources(query: str, top_k: int = FINAL_TOP_K) -> Dict:
-    docs = retrieve(query, top_k=top_k)
+# =========================
+# 4. 路由后的回答主函数
+# =========================
+def answer_with_sources(query: str, top_k: int | None = None) -> Dict:
+    qtype = classify_question(query)
+    chosen_top_k = top_k if top_k is not None else get_top_k_for_question_type(qtype)
+
+    docs = retrieve(query, top_k=chosen_top_k)
 
     sources = [
         {
@@ -256,7 +481,17 @@ def answer_with_sources(query: str, top_k: int = FINAL_TOP_K) -> Dict:
         for doc in docs
     ]
 
-    if is_low_confidence(query, docs):
+    # should_refuse 直接走保守策略优先
+    if qtype == "should_refuse":
+        return {
+            "answer": build_refusal_answer(),
+            "sources": sources,
+            "confidence": "low",
+            "question_type": qtype,
+        }
+
+    # 复杂问题、证据不足时也保守
+    if is_low_confidence(query, docs, qtype):
         return {
             "answer": (
                 "【结论】\n根据当前检索到的法条，暂时无法确定。\n\n"
@@ -265,9 +500,10 @@ def answer_with_sources(query: str, top_k: int = FINAL_TOP_K) -> Dict:
             ),
             "sources": sources,
             "confidence": "low",
+            "question_type": qtype,
         }
 
-    prompt = build_answer_prompt()
+    prompt = get_prompt_by_type(qtype)
     model = get_model()
 
     chain = (
@@ -278,17 +514,19 @@ def answer_with_sources(query: str, top_k: int = FINAL_TOP_K) -> Dict:
     )
 
     answer = chain.invoke(query)
+
     return {
         "answer": answer,
         "sources": sources,
-        "confidence": "medium",
+        "confidence": "medium" if qtype != "complex_reasoning" else "low",
+        "question_type": qtype,
     }
 
 
 def get_rag_chain():
-    retriever = get_retriever()
-    prompt = build_answer_prompt()
+    prompt = build_direct_prompt()
     model = get_model()
+    retriever = get_retriever()
 
     rag_chain = (
         {"context": retriever | format_docs, "question": RunnablePassthrough()}

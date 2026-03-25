@@ -1,0 +1,141 @@
+[
+  {
+    "id": "ae_001",
+    "question": "故意杀人罪如何认定？",
+    "reference_answer": "应优先依据刑法中故意杀人罪相关法条进行回答，说明故意杀人的基本处罚规则，并引用第二百三十二条作为核心依据。",
+    "expected_articles": ["第二百三十二条故意杀人罪"],
+    "should_refuse": false,
+    "type": "direct_answer",
+    "note": "基础直查题"
+  },
+  {
+    "id": "ae_002",
+    "question": "故意伤害把人打成重伤，一般怎么处理？",
+    "reference_answer": "应依据故意伤害罪相关法条回答，说明故意伤害致人重伤的处罚规则，并引用第二百三十四条。",
+    "expected_articles": ["第二百三十四条故意伤害罪"],
+    "should_refuse": false,
+    "type": "direct_answer",
+    "note": "基础直查题"
+  },
+  {
+    "id": "ae_003",
+    "question": "犯罪以后主动投案并如实交代，一般在法律上叫什么？",
+    "reference_answer": "应说明这通常属于自首，应引用第六十七条并简述自首的定义。",
+    "expected_articles": ["第六十七条自首"],
+    "should_refuse": false,
+    "type": "definition",
+    "note": "定义类问题"
+  },
+  {
+    "id": "ae_004",
+    "question": "正当防卫超过必要限度造成重大损害时，法律一般怎么评价？",
+    "reference_answer": "应结合正当防卫相关法条作答，至少引用第二十条，并说明防卫过当应当负刑事责任，但应减轻或免除处罚。",
+    "expected_articles": ["第二十条正当防卫"],
+    "should_refuse": false,
+    "type": "complex_reasoning",
+    "note": "复杂推理题"
+  },
+  {
+    "id": "ae_005",
+    "question": "如果是从犯参与共同犯罪，一般怎么处理？",
+    "reference_answer": "应说明从犯在共同犯罪中起次要或辅助作用，并引用第二十七条，说明应从轻、减轻处罚或者免除处罚。",
+    "expected_articles": ["第二十七条从犯"],
+    "should_refuse": false,
+    "type": "definition",
+    "note": "角色认定类"
+  },
+  {
+    "id": "ae_006",
+    "question": "危险驾驶罪一般指什么情况？",
+    "reference_answer": "应引用第一百三十三条之一，说明在道路上驾驶机动车的危险驾驶情形。",
+    "expected_articles": ["第一百三十三条之一危险驾驶罪"],
+    "should_refuse": false,
+    "type": "direct_answer",
+    "note": "基础直查题"
+  },
+  {
+    "id": "ae_007",
+    "question": "合同诈骗和普通诈骗有什么区别？",
+    "reference_answer": "应至少指出合同诈骗发生在签订、履行合同过程中，并优先引用第二百二十四条；若系统无法完整比较，应保守回答并说明依据有限。",
+    "expected_articles": ["第二百二十四条合同诈骗罪"],
+    "should_refuse": false,
+    "type": "confusing",
+    "note": "近义罪名区分"
+  },
+  {
+    "id": "ae_008",
+    "question": "把别人非法关起来不让走，一般按什么处理？",
+    "reference_answer": "应优先引用第二百三十八条，说明非法拘禁的基本规定。",
+    "expected_articles": ["第二百三十八条非法拘禁罪"],
+    "should_refuse": false,
+    "type": "rewrite",
+    "note": "自然语言改写"
+  },
+  {
+    "id": "ae_009",
+    "question": "如果只是根据这些法条，能不能直接判断某个案件一定会判几年？",
+    "reference_answer": "系统应保守回答，说明仅凭法条不足以直接判断具体量刑，需要结合具体案件事实、情节和证据。",
+    "expected_articles": [],
+    "should_refuse": true,
+    "type": "should_refuse",
+    "note": "应拒答/保守回答"
+  },
+  {
+    "id": "ae_010",
+    "question": "只看你检索到的这些法条，能不能断定这个人一定构成故意杀人罪？",
+    "reference_answer": "应拒绝作出确定性个案结论，说明需要结合具体事实、主观故意、行为结果等进行分析。",
+    "expected_articles": [],
+    "should_refuse": true,
+    "type": "should_refuse",
+    "note": "应拒答/保守回答"
+  },
+  {
+  "id": "ae_011",
+  "question": "抢劫和抢夺的关键区别，系统应该先看哪类法条？",
+  "reference_answer": "应优先命中抢劫罪或抢夺罪相关条文，并给出区分思路；若证据不足，应明确说明比较结论有限。",
+  "expected_articles": [
+    "第二百六十三条抢劫罪",
+    "第二百六十七条抢夺罪；抢劫罪",
+    "第二百六十九条抢劫罪"
+  ],
+  "should_refuse": false,
+  "type": "confusing",
+  "note": "易混淆题"
+},
+  {
+    "id": "ae_012",
+    "question": "犯罪未遂一般怎么理解？",
+    "reference_answer": "应引用第二十三条，说明已经着手实行犯罪，但由于犯罪分子意志以外的原因而未得逞。",
+    "expected_articles": ["第二十三条犯罪未遂"],
+    "should_refuse": false,
+    "type": "definition",
+    "note": "定义类"
+  },
+  {
+    "id": "ae_013",
+    "question": "未成年人犯罪是不是一定不负刑事责任？",
+    "reference_answer": "系统不应直接给出绝对化结论，应保守说明需要结合年龄和具体法条规定分析。",
+    "expected_articles": [],
+    "should_refuse": true,
+    "type": "should_refuse",
+    "note": "应避免绝对化结论"
+  },
+  {
+    "id": "ae_014",
+    "question": "酒后开车撞死人，一定就是危险驾驶罪吗？",
+    "reference_answer": "系统不应简单下结论，应说明需要结合具体行为结果和法条规定分析，不宜直接绝对定性。",
+    "expected_articles": [],
+    "should_refuse": true,
+    "type": "should_refuse",
+    "note": "复杂案件不应直接定性"
+  },
+  {
+    "id": "ae_015",
+    "question": "故意毁坏财物一般按什么规定处理？",
+    "reference_answer": "应引用第二百七十五条，说明故意毁坏公私财物且达到法定程度的处理规则。",
+    "expected_articles": ["第二百七十五条故意毁坏财物罪"],
+    "should_refuse": false,
+    "type": "direct_answer",
+    "note": "基础直查题"
+  }
+]

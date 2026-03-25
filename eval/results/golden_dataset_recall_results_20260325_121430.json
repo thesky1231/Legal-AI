@@ -1,0 +1,23 @@
+{
+  "dataset_path": "data\\golden_dataset.json",
+  "dataset_size": 40,
+  "generated_at": "20260325_121430",
+  "summary": {
+    "BM25": {
+      "Recall@3": 0.0,
+      "Recall@5": 0.0
+    },
+    "Vector": {
+      "Recall@3": 0.925,
+      "Recall@5": 0.925
+    },
+    "Hybrid": {
+      "Recall@3": 0.925,
+      "Recall@5": 0.925
+    },
+    "Hybrid + Rerank": {
+      "Recall@3": 0.925,
+      "Recall@5": 0.925
+    }
+  }
+}

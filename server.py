@@ -1,15 +1,16 @@
 from functools import lru_cache
 from typing import List, Dict, Any
 import time
-
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-
 from src.rag.chain import get_rag_chain, retrieve, answer_with_sources
 from config import SERVER_HOST, SERVER_PORT
+from logger import get_logger
 
+
+logger = get_logger("server")
 app = FastAPI(title="法律助手 Pro 后端", version="1.1.0")
 
 
@@ -29,6 +30,7 @@ class RetrieveRequest(BaseModel):
 
 @app.get("/health")
 def health():
+    logger.info("health check")
     return {"status": "ok", "service": "legal-ai-backend"}
 
 
@@ -36,6 +38,7 @@ def health():
 def api_retrieve(request: RetrieveRequest):
     start = time.perf_counter()
     try:
+        logger.info(f"/api/retrieve query={request.query!r} top_k={request.top_k}")
         docs = retrieve(request.query, top_k=request.top_k)
         latency_ms = round((time.perf_counter() - start) * 1000, 2)
 
@@ -49,6 +52,7 @@ def api_retrieve(request: RetrieveRequest):
                 }
             )
 
+        logger.info(f"/api/retrieve success count={len(results)} latency_ms={latency_ms}")
         return {
             "query": request.query,
             "top_k": request.top_k,
@@ -58,7 +62,8 @@ def api_retrieve(request: RetrieveRequest):
         }
     except Exception as e:
         import traceback
-        print(traceback.format_exc(), flush=True)
+        logger.error(f"/api/retrieve failed: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -66,8 +71,14 @@ def api_retrieve(request: RetrieveRequest):
 def api_chat(request: ChatRequest):
     start = time.perf_counter()
     try:
+        logger.info(f"/api/chat query={request.query!r}")
         result = answer_with_sources(request.query)
         latency_ms = round((time.perf_counter() - start) * 1000, 2)
+
+        logger.info(
+            f"/api/chat success confidence={result['confidence']} "
+            f"sources={len(result['sources'])} latency_ms={latency_ms}"
+        )
 
         return {
             "query": request.query,
@@ -77,24 +88,39 @@ def api_chat(request: ChatRequest):
             "latency_ms": latency_ms,
         }
     except Exception as e:
+        import traceback
+        logger.error(f"/api/chat failed: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/chat/stream")
-async def api_chat_stream(request: ChatRequest):
+@app.post("/api/chat")
+def api_chat(request: ChatRequest):
+    start = time.perf_counter()
     try:
-        rag_chain = load_chain()
+        logger.info(f"/api/chat query={request.query!r}")
+        result = answer_with_sources(request.query)
+        latency_ms = round((time.perf_counter() - start) * 1000, 2)
+
+        logger.info(
+            f"/api/chat success type={result['question_type']} "
+            f"confidence={result['confidence']} "
+            f"sources={len(result['sources'])} latency_ms={latency_ms}"
+        )
+
+        return {
+            "query": request.query,
+            "answer": result["answer"],
+            "sources": result["sources"],
+            "confidence": result["confidence"],
+            "question_type": result["question_type"],
+            "latency_ms": latency_ms,
+        }
     except Exception as e:
+        import traceback
+        logger.error(f"/api/chat failed: {e}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
-
-    async def event_generator():
-        try:
-            for chunk in rag_chain.stream(request.query):
-                yield chunk
-        except Exception as e:
-            yield f"\n[ERROR] {str(e)}"
-
-    return StreamingResponse(event_generator(), media_type="text/plain; charset=utf-8")
 
 
 if __name__ == "__main__":

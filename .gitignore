@@ -9,6 +9,6 @@ db_docker/
 
 .venv/
 env/
-
+eval/results/
 .DS_Store
 Thumbs.db
