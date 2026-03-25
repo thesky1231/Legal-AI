@@ -1,26 +1,70 @@
 import streamlit as st
-import sys
-import os
-
-# 把项目根目录加入 Python 搜索路径，这样才能找到 src 包
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-
-from src.rag.chain import get_rag_chain
+from chain import get_rag_chain
 
 st.set_page_config(page_title="⚖️ 法律助手 Pro", page_icon="⚖️")
-st.title("⚖️ 法律智能助手 (工程版)")
+st.title("⚖️ 法律智能助手（工程版）")
+
 
 @st.cache_resource
 def load_chain_cached():
     return get_rag_chain()
 
-# 加载链条
+
 try:
     rag_chain = load_chain_cached()
 except Exception as e:
-    st.error(f"加载失败，请检查数据库路径。错误信息: {e}")
-    st.stop()
+    import traceback
 
+    st.error("❌ 系统初始化失败")
+    st.code(traceback.format_exc())
+    st.stop()
+import streamlit as st
+from src.rag.chain import answer_with_sources
+
+st.set_page_config(page_title="⚖️ 法律助手 Pro", page_icon="⚖️")
+st.title("⚖️ 法律智能助手（工程版）")
+st.caption("支持法条依据展示、低置信度保守回答。")
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        if message.get("sources"):
+            with st.expander("查看法条依据"):
+                for idx, source in enumerate(message["sources"], start=1):
+                    st.markdown(f"**资料 {idx}｜{source['article']}**")
+                    st.caption(f"来源：{source['source']}")
+                    st.write(source["content"])
+
+if prompt := st.chat_input("请输入法律问题..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    with st.chat_message("assistant"):
+        with st.spinner("AI 正在检索并生成答案..."):
+            result = answer_with_sources(prompt)
+            st.markdown(result["answer"])
+
+            badge = "🟡 中等置信度" if result["confidence"] == "medium" else "🔴 低置信度"
+            st.caption(f"当前回答状态：{badge}")
+
+            with st.expander("查看法条依据"):
+                for idx, source in enumerate(result["sources"], start=1):
+                    st.markdown(f"**资料 {idx}｜{source['article']}**")
+                    st.caption(f"来源：{source['source']}")
+                    st.write(source["content"])
+
+    st.session_state.messages.append(
+        {
+            "role": "assistant",
+            "content": result["answer"],
+            "sources": result["sources"],
+        }
+    )
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -29,13 +73,13 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 if prompt := st.chat_input("请输入法律问题..."):
-    with st.chat_message("user"):
-        st.markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
 
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
     with st.chat_message("assistant"):
-        with st.spinner("AI 正在检索..."):
-            stream = rag_chain.stream(prompt)
-            response = st.write_stream(stream)
-            
+        with st.spinner("AI 正在检索并生成答案..."):
+            response = st.write_stream(rag_chain.stream(prompt))
+
     st.session_state.messages.append({"role": "assistant", "content": response})
